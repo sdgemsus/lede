@@ -25,37 +25,58 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Initialization environment
-        env:
-           DEBIAN_FRONTEND: noninteractive
-        run: |
-           docker rmi `docker images -q`
-           sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /etc/mysql /etc/php
-           sudo -E apt-get -y purge azure-cli* docker* ghc* zulu* hhvm* llvm* firefox* google* dotnet* aspnetcore* powershell* openjdk* adoptopenjdk* mysql* php* mongodb* moby* snap* || true
-           sudo -E apt-get -qq update
-           sudo -E apt-get -qq install libfuse-dev $(curl -fsSL git.io/depends-ubuntu-2204)
-           sudo -E apt-get -qq autoremove --purge
-           sudo -E apt-get -qq clean
-           sudo timedatectl set-timezone "$TZ"
-           sudo mkdir -p /workdir
-           sudo chown $USER:$GROUPS /workdir
+    - name: "Optimize Disk Space"
+      uses: "hugoalh/disk-space-optimizer-ghaction@v0.8.0"
+      with:
+        operate_sudo: "True"
+        general_include: ".+"
+        general_exclude: |-
+          ^GCC$
+          ^G\+\+$
+          Clang
+          LLVM
+        docker_include: ".+"
+        docker_prune: "True"
+        docker_clean: "True"
+        apt_prune: "True"
+        apt_clean: "True"
+        homebrew_prune: "True"
+        homebrew_clean: "True"
+        npm_prune: "True"
+        npm_clean: "True"
+        os_swap: "True"
 
-      - name: Check Space
-        run: |
-          df -h   
-      - name: Checkout OpenWrt
-        uses: actions/checkout@v3
+    - name: Freeing up disk space
+      uses: easimon/maximize-build-space@master
+      with: 
+        root-reserve-mb: 2048
+        swap-size-mb: 1
+        remove-dotnet: 'true'
+        remove-android: 'true'
+        remove-haskell: 'true'
+        remove-codeql: 'true'
+        remove-docker-images: 'true'
+
+    - name: Free up disk space complete
+      run: |
+        echo "Free up disk space complete"
+        echo "=============================================================================="
+        df -hT
+        echo "==============================================================================" 
+    
+    - name: Checkout OpenWrt
+      uses: actions/checkout@v3
           
-      - name: 第三方插件
-        run: | 
+    - name: 第三方插件
+      run: | 
           cd package/lean
           rm -rf luci-theme-argon
           git clone -b 18.06 https://github.com/jerrykuku/luci-theme-argon.git
           git clone https://github.com/jerrykuku/luci-app-argon-config.git
           git clone https://github.com/fw876/helloworld.git
           
-      - name: OpenClash
-        run: |
+    - name: OpenClash
+      run: |
           mkdir package/luci-app-openclash
           cd package/luci-app-openclash
           git init
@@ -65,14 +86,14 @@ jobs:
           git pull origin master
           git branch --set-upstream-to=origin/master master
           
-      - name: Update feeds
-        run: |
+    - name: Update feeds
+      run: |
           sed -i 's/#src-git helloworld/src-git helloworld/g' ./feeds.conf.default
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Generate configuration file
-        run: |
+    - name: Generate configuration file
+      run: |
           rm -f ./.config*
           touch ./.config
           cat >> .config <<EOF
@@ -285,13 +306,13 @@ jobs:
           sed -i 's/^[ \\t]*//g' ./.config
           make defconfig
 
-      - name: Make download
-        run: |
+    - name: Make download
+      run: |
           make download -j8
           find dl -size -1024c -exec rm -f {} \;
 
-      - name: Compile firmware
-        run: |
+    - name: Compile firmware
+      run: |
           make -j$(nproc) || make -j1 V=s
           echo "======================="
           echo "Space usage:"
@@ -302,8 +323,8 @@ jobs:
           du -h --max-depth=1 ./build_dir
           du -h --max-depth=1 ./bin
 
-      - name: Prepare artifact
-        run: |
+    - name: Prepare artifact
+      run: |
           mkdir -p ./artifact/firmware
           mkdir -p ./artifact/package
           mkdir -p ./artifact/buildinfo
@@ -312,20 +333,20 @@ jobs:
           cp -rf $(find ./bin/packages/ -type f -name "*.ipk") ./artifact/package/
           cp -rf $(find ./bin/targets/ -type f -name "*.buildinfo" -o -name "*.manifest") ./artifact/buildinfo/
 
-      - name: Upload buildinfo
-        uses: actions/upload-artifact@v3
-        with:
+    - name: Upload buildinfo
+      uses: actions/upload-artifact@v3
+      with:
           name: OpenWrt_buildinfo
           path: ./artifact/buildinfo/
 
-      - name: Upload package
-        uses: actions/upload-artifact@v3
-        with:
+    - name: Upload package
+      uses: actions/upload-artifact@v3
+      with:
           name: OpenWrt_package
           path: ./artifact/package/
 
-      - name: Upload firmware
-        uses: actions/upload-artifact@v3
-        with:
+    - name: Upload firmware
+      uses: actions/upload-artifact@v3
+      with:
           name: OpenWrt_firmware
           path: ./bin/targets/
